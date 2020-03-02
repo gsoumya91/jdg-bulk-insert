@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:cxf="http://camel.apache.org/schema/cxf"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd        http://camel.apache.org/schema/spring       http://camel.apache.org/schema/spring/camel-spring.xsd http://camel.apache.org/schema/cxf http://camel.apache.org/schema/cxf/camel-cxf.xsd">
+    <!-- SOAP Endpoint for SMS -->
+    <cxf:cxfEndpoint address="http://0.0.0.0:8085/sms" id="smsEndpoint" serviceClass="org.tml.esb.SMSService">
+        <cxf:properties>
+            <entry key="dataFormat" value="MESSAGE"/>
+        </cxf:properties>
+    </cxf:cxfEndpoint>
+    <camelContext id="sms-rest" streamCache="true"
+        xmlns="http://camel.apache.org/schema/spring" xmlns:esb="http://esb.tml.org/">
+        <propertyPlaceholder id="properties" location="application.properties"/>
+        <!-- REST Producer using Camel REST -->
+        <restConfiguration apiContextPath="docs" component="servlet" contextPath="/api/sms">
+            <!-- Setup swagger API descriptions -->
+            <apiProperty key="schemes" value="{{swagger.schemes}}"/>
+            <apiProperty key="host" value="{{swagger.host}}"/>
+            <apiProperty key="base.path" value="/sms"/>
+            <apiProperty key="api.title" value="{{swagger.api.title}}"/>
+            <apiProperty key="api.description" value="{{swagger.api.desc}}"/>
+            <apiProperty key="api.contact.name" value="{{swagger.api.contact}}"/>
+        </restConfiguration>
+        <rest id="sms">
+            <!-- START OF REST CONFIG -->
+            <post consumes="application/json"
+                id="get-3ca7ea3c-d661-4cd2-b59b-5ed0d200aea0"
+                produces="application/json" type="org.tml.esb.SMSInput" uri="/insert">
+                <description>To insert SMS details into the database.</description>
+                <param name="body" required="true" type="body"/>
+                <responseMessage code="200" message="Request is valid"/>
+                <responseMessage code="400" message="Request Validation failed"/>
+                <responseMessage code="500" message="Server is unavailable"/>
+                <to uri="direct:restRoute"/>
+            </post>
+        </rest>
+        <!-- SOAP Endpoint -->
+        <route id="cxfRoute">
+            <from id="_from2" uri="cxf:bean:smsEndpoint"/>
+            <doTry id="_doTry2">
+                <bean id="_bean4"
+                    method="sourceIp(REQUEST FROM :: **********)" ref="logger"/>
+                <bean id="_bean6"
+                    method="request(*************** Request Received from Cordys ***************)" ref="logger"/>
+                <setHeader headerName="phoneNumber" id="_setHeader4">
+                    <xpath resultType="String">//esb:insert/phoneNumber/text()</xpath>
+                </setHeader>
+                <setHeader headerName="ruleName" id="_setHeader5">
+                    <xpath resultType="String">//esb:insert/ruleName/text()</xpath>
+                </setHeader>
+                <setHeader headerName="messageText" id="_setHeader6">
+                    <xpath resultType="String">//esb:insert/messageText/text()</xpath>
+                </setHeader>
+                <choice id="_choice2">
+                    <when id="_when2">
+                        <simple>${header.messageText} == '' or ${header.messageText} == null or ${header.phoneNumber} == '' or ${header.phoneNumber} == null or ${header.ruleName} == '' or ${header.ruleName} == null</simple>
+                        <setFaultBody id="_setFaultBody1">
+                            <constant>Header parameter is missing or null</constant>
+                        </setFaultBody>
+                    </when>
+                    <otherwise id="_otherwise2">
+                        <to id="_to1" uri="direct:insertSmsData"/>
+                        <setBody id="_setBody2">
+                            <constant>&lt;soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+   &lt;soap:Body&gt;
+      &lt;ns2:insertResponse xmlns:ns2="http://esb.tml.org/"&gt;
+         &lt;status&gt;1 Row is Inserted&lt;/status&gt;
+      &lt;/ns2:insertResponse&gt;
+   &lt;/soap:Body&gt;
+&lt;/soap:Envelope&gt;</constant>
+                        </setBody>
+                    </otherwise>
+                </choice>
+                <doCatch id="_doCatch1">
+                    <exception>java.sql.SQLException</exception>
+                    <log id="_log1" message="SQL Exception Occured :: ********** ${exception.stacktrace}"/>
+                    <setFaultBody id="_setFaultBody2">
+                        <constant>SQL Exception occurred. Please check logs.</constant>
+                    </setFaultBody>
+                </doCatch>
+                <doCatch id="_doCatch2">
+                    <exception>java.lang.Exception</exception>
+                    <log id="_log2" message="Exception Occured :: ********** ${exception.stacktrace}"/>
+                    <setFaultBody id="_setFaultBody3">
+                        <constant>Exception occurred. Please check logs.</constant>
+                    </setFaultBody>
+                </doCatch>
+            </doTry>
+        </route>
+        <!-- Rest Endpoint -->
+        <route id="restRoute">
+            <from id="_from1" uri="direct:restRoute"/>
+            <doTry id="_doTry1">
+                <setHeader headerName="Content-Type" id="_setHeader1">
+                    <simple>application/json</simple>
+                </setHeader>
+                <bean id="_bean1"
+                    method="sourceIp(REQUEST FROM SOURCE :: **********)" ref="logger"/>
+                <bean id="_bean2"
+                    method="request(*************** Request Received from Cordys ***************)" ref="logger"/>
+                <setHeader headerName="phoneNumber" id="_setHeader8">
+                    <jsonpath>$.phoneNumber</jsonpath>
+                </setHeader>
+                <setHeader headerName="ruleName" id="_setHeader9">
+                    <jsonpath>$.ruleName</jsonpath>
+                </setHeader>
+                <setHeader headerName="messageText" id="_setHeader10">
+                    <jsonpath>$.messageText</jsonpath>
+                </setHeader>
+                <choice id="_choice1">
+                    <when id="_when1">
+                        <simple>${header.messageText} == '' or ${header.messageText} == null or ${header.phoneNumber} == '' or ${header.phoneNumber} == null or ${header.ruleName} == '' or ${header.ruleName} == null</simple>
+                        <setHeader
+                            headerName="Exchange.HTTP_RESPONSE_CODE" id="_setHeader1">
+                            <constant>400</constant>
+                        </setHeader>
+                        <setHeader headerName="Content-Type" id="_setHeader11">
+                            <constant>application/json</constant>
+                        </setHeader>
+                        <setBody id="_setBody1">
+                            <constant>{"error":"Header parameter is missing or null"}</constant>
+                        </setBody>
+                        <bean id="_bean3"
+                            method="response(SMS :: DB RESPONSE :: ***********)" ref="logger"/>
+                    </when>
+                    <otherwise id="_otherwise1">
+                        <to id="_to3" uri="direct:insertSmsData"/>
+                        <setBody id="_setBody3">
+                            <constant>{"success":"1 Row Inserted"}</constant>
+                        </setBody>
+                        <setHeader headerName="Content-Type" id="_setHeader2">
+                            <constant>application/json</constant>
+                        </setHeader>
+                        <bean id="_bean5"
+                            method="response(SMS :: Database RESPONSE :: ***********)" ref="logger"/>
+                    </otherwise>
+                </choice>
+                <doCatch id="_doCatch3">
+                    <exception>java.sql.SQLException</exception>
+                    <log id="_log3" message="SQL Exception Occured :: ********** ${exception.stacktrace}"/>
+                    <setBody id="_setBody4">
+                        <constant>{"error":"SQL Exception occurred. Please check logs."}</constant>
+                    </setBody>
+                    <setHeader headerName="Content-Type" id="_setHeader12">
+                        <simple>application/json</simple>
+                    </setHeader>
+                </doCatch>
+                <doCatch id="_doCatch4">
+                    <exception>java.lang.Exception</exception>
+                    <log id="_log4" message="Exception Occured :: ********** ${exception.stacktrace}"/>
+                    <setBody id="_setBody5">
+                        <constant>{"error":"Exception occurred. Please check logs."}</constant>
+                    </setBody>
+                    <setHeader headerName="Content-Type" id="_setHeader13">
+                        <simple>application/json</simple>
+                    </setHeader>
+                </doCatch>
+            </doTry>
+        </route>
+        <!-- DB Route -->
+        <route id="_route1">
+            <from id="_from3" uri="direct:insertSmsData"/>
+            <to id="_to2" uri="mock:sqlComponent:{{sql.insertNewSMS}}"/>
+        </route>
+    </camelContext>
+    <!-- configure the Camel SQL component to use the JDBC data source -->
+    <bean class="org.apache.camel.component.sql.SqlComponent" id="sqlComponent">
+        <property name="dataSource" ref="oracle-ds"/>
+    </bean>
+    <!-- Configures an Outbound DB Connection -->
+    <bean
+        class="org.springframework.jdbc.datasource.DriverManagerDataSource" id="oracle-ds">
+        <property name="driverClassName" value="oracle.jdbc.driver.OracleDriver"/>
+        <property name="url" value="jdbc:oracle:thin:@//172.31.14.105:1521/CRMSMS"/>
+        <property name="username" value="FUSESMS"/>
+        <property name="password" value="Fuse#2019"/>
+    </bean>
+    <bean
+        class="org.apache.camel.component.servlet.CamelHttpTransportServlet" id="camelHttpTransportServlet"/>
+    <bean
+        class="org.springframework.boot.web.servlet.ServletRegistrationBean" id="servlet">
+        <property name="name" value="CamelServlet"/>
+        <property name="servlet" ref="camelHttpTransportServlet"/>
+        <property name="urlMappings" value="/api/sms/*"/>
+    </bean>
+    <bean class="org.tml.esb.LogAggregator" id="logger"/>
+</beans>

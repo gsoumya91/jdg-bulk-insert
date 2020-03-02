@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:cxf="http://camel.apache.org/schema/cxf"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd        http://camel.apache.org/schema/spring       http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+	<camelContext id="bulk-insert-jdg" streamCache="true"
+		xmlns="http://camel.apache.org/schema/spring"
+		xmlns:esb="http://esb.tml.org/">
+		<endpoint id="datagrid"
+			uri="infinispan://?cacheContainer=#cacheManager" />
+		<dataFormats>
+			<json id="json" library="Jackson"
+				unmarshalTypeName="org.tml.esb.AccountExtractResponse"
+				include="NON_NULL" />
+		</dataFormats>
+
+		<!-- REST Producer using Camel REST -->
+
+		<restConfiguration apiContextPath="docs"
+			component="servlet" contextPath="/api/bulkInsert">
+			<!-- Setup swagger API descriptions -->
+			<apiProperty key="schemes" value="{{swagger.schemes}}" />
+			<apiProperty key="host" value="{{swagger.host}}" />
+			<apiProperty key="base.path" value="/bulkInsert" />
+			<apiProperty key="api.title"
+				value="{{swagger.api.title}}" />
+			<apiProperty key="api.description"
+				value="{{swagger.api.desc}}" />
+			<apiProperty key="api.contact.name"
+				value="{{swagger.api.contact}}" />
+		</restConfiguration>
+
+		<rest id="bulk-insert-jdg">
+			<!-- START OF REST CONFIG -->
+			<post consumes="application/json"
+				id="get-3ca7ea3c-d661-4cd2-b59b-5ed0d200aea0"
+				produces="application/json" uri="/insert">
+				<description>To insert given financial year's data of Sales order account extract from DB into JDG.</description>
+				<param name="body" required="true" type="body" />
+				<responseMessage code="200"
+					message="Request is valid" />
+				<responseMessage code="400"
+					message="Request Validation failed" />
+				<responseMessage code="500"
+					message="Service has encountered an exception" />
+				<to uri="direct:restRoute" />
+			</post>
+		</rest>
+
+		<!-- Rest Endpoint -->
+		<route id="restRoute">
+			<from id="_from1" uri="direct:restRoute" />
+			<doTry id="_doTry1">
+				<setHeader headerName="Content-Type" id="_setHeader1">
+					<simple>application/json</simple>
+				</setHeader>
+				<bean id="_bean1"
+					method="sourceIp(REQUEST FROM SOURCE :: **********)" ref="logger" />
+				<bean id="_bean2"
+					method="request(*************** Request Received from User ***************)"
+					ref="logger" />
+				<setHeader headerName="invcNum" id="_setHeader8">
+					<jsonpath>$.invcNum</jsonpath>
+				</setHeader>
+				<setHeader headerName="invoiceEndDate" id="_setHeader9">
+					<jsonpath>$.invoiceEndDate</jsonpath>
+				</setHeader>
+				<choice id="_choice1">
+					<when id="_when1">
+						<simple>${header.invcNum} == '' or ${header.invcNum} == null or 
+					${header.invoiceEndDate} == '' or ${header.invoiceEndDate} == null</simple>
+						<setHeader headerName="Exchange.HTTP_RESPONSE_CODE"
+							id="_setHeader1">
+							<constant>400</constant>
+						</setHeader>
+						<setHeader headerName="Content-Type" id="_setHeader11">
+							<constant>application/json</constant>
+						</setHeader>
+						<setBody id="_setBody1">
+							<constant>{"error":"Header parameter is missing or null"}</constant>
+						</setBody>
+						<bean id="_bean3"
+							method="response(Account Extract :: DB RESPONSE :: ***********)"
+							ref="logger" />
+					</when>
+					<otherwise id="_otherwise1">
+						<to id="_to3" uri="direct:selectAccountExtractData" />
+
+						<setHeader headerName="Content-Type" id="_setHeader2">
+							<constant>application/json</constant>
+						</setHeader>
+						<bean id="_bean5"
+							method="response(Account Extract :: Database RESPONSE :: ***********)"
+							ref="logger" />
+					</otherwise>
+				</choice>
+				<doCatch id="_doCatch3">
+					<exception>java.sql.SQLException</exception>
+					<log id="_log3"
+						message="SQL Exception Occured :: ********** ${exception.stacktrace}" />
+					<setHeader headerName="Exchange.HTTP_RESPONSE_CODE"
+						id="_setHeader18">
+						<constant>500</constant>
+					</setHeader>
+					<setBody id="_setBody4">
+						<constant>{"error":"SQL Exception occurred. Please check logs."}</constant>
+					</setBody>
+					<setHeader headerName="Content-Type" id="_setHeader12">
+						<simple>application/json</simple>
+					</setHeader>
+				</doCatch>
+				<doCatch id="_doCatch4">
+					<exception>java.lang.Exception</exception>
+					<log id="_log4"
+						message="Exception Occured :: ********** ${exception.stacktrace}" />
+					<setHeader headerName="Exchange.HTTP_RESPONSE_CODE"
+						id="_setHeader17">
+						<constant>500</constant>
+					</setHeader>
+					<setBody id="_setBody5">
+						<constant>{"error":"Exception occurred. Please check logs."}</constant>
+					</setBody>
+					<setHeader headerName="Content-Type" id="_setHeader13">
+						<simple>application/json</simple>
+					</setHeader>
+				</doCatch>
+			</doTry>
+		</route>
+
+
+		<!-- DB Route -->
+		<route id="_route1">
+			<from id="_from3" uri="direct:selectAccountExtractData" />
+			<!-- <bean id="JdgConnectionManagerImpl" method="updateOrAddIndex(${header.invoiceStartDate},${header.invoiceEndDate})" 
+				ref="JdgConnectionManagerImpl" /> -->
+			 <to uri="sqlComponent:{{sql.selectAccountData}}?outputType=SelectList&amp;outputClass=org.tml.esb.AccountExtractResponse"/> 
+				<marshal ref="json"/>
+				 <log message="Body after marshaling : ${body}"/> 
+			 <bean id="JdgConnectionManagerImpl" method="put" ref="JdgConnectionManagerImpl"/>
+			 <bean id="JdgConnectionManagerImpl" method="getData(1)" ref="JdgConnectionManagerImpl" 
+				/> 
+				<log message="Body after query : ${body}"/>
+<!-- 
+			<setHeader headerName="CamelInfinispanOperation">
+				<constant>CamelInfinispanOperationQuery</constant>
+			</setHeader>
+			<setHeader headerName="CamelInfinispanQueryBuilder">
+				<method ref="queryBuilder" method="getBuilder" />
+			</setHeader>
+			<log message="Operation ::::: ${header.CamelInfinispanOperation}"/>
+			<log message="Query Builder ::::: ${header.CamelInfinispanQueryBuilder}"/> -->
+			<to
+				uri="infinispan://accountExtract?cacheContainer=#cacheManager" />
+				
+				<log message="Body ::::: ${body}"/>
+		</route>
+	</camelContext>
+
+	<bean id="remoteCacheManagerFactory"
+		class="org.tml.esb.RemoteCacheManagerFactory">
+		<constructor-arg value="172.31.14.84" />
+		<constructor-arg value="11222" />
+	</bean>
+
+	<bean id="cacheManager" factory-bean="remoteCacheManagerFactory"
+		factory-method="newRemoteCacheManager">
+	</bean>
+
+	<bean id="queryBuilder"
+		class="org.tml.esb.InfinispanQueryExample" />
+
+	<!-- configure the Camel SQL component to use the JDBC data source -->
+	<bean class="org.apache.camel.component.sql.SqlComponent"
+		id="sqlComponent">
+		<property name="dataSource" ref="oracle-ds" />
+	</bean>
+	<!-- Configures an Outbound DB Connection -->
+	<bean
+		class="org.springframework.jdbc.datasource.DriverManagerDataSource"
+		id="oracle-ds">
+		<property name="driverClassName"
+			value="${jdbc.driverClassName}" />
+		<property name="url" value="${jdbc.url}" />
+		<property name="username" value="${jdbc.username}" />
+		<property name="password" value="${jdbc.password}" />
+	</bean>
+	<bean
+		class="org.apache.camel.component.servlet.CamelHttpTransportServlet"
+		id="camelHttpTransportServlet" />
+	<bean
+		class="org.springframework.boot.web.servlet.ServletRegistrationBean"
+		id="servlet">
+		<property name="name" value="CamelServlet" />
+		<property name="servlet" ref="camelHttpTransportServlet" />
+		<property name="urlMappings" value="/api/bulkInsert/*" />
+	</bean>
+	<bean class="org.tml.esb.LogAggregator" id="logger" />
+	<bean class="org.tml.jdgrepo.JdgConnectionManagerImpl"
+		id="JdgConnectionManagerImpl" />
+</beans>

@@ -1,0 +1,18 @@
+kind: 'BuildConfig'
+apiVersion: 'v1'
+metadata:
+  name: 'bulk-insert-jdg'
+  namespace: cicd
+spec:
+  source:
+    git:
+      ref: master
+      uri: ''
+    sourceSecret:
+      name: github-op
+  strategy:
+    jenkinsPipelineStrategy:
+      env:
+      - name: PROJECT
+        value: dev-esb
+      jenkinsfilePath: 'Jenkinsfile'
